@@ -141,6 +141,7 @@ class CameraView(context: Context, private val frameProcessorThread: ExecutorSer
 
   private val lifecycleRegistry: LifecycleRegistry
   private var hostLifecycleState: Lifecycle.State
+  var hardwareLevel: Int? = null
 
   private val inputRotation: Int
     get() {
@@ -191,7 +192,7 @@ class CameraView(context: Context, private val frameProcessorThread: ExecutorSer
         val cameraManger = reactContext.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
         cameraManger?.let {
           val characteristics = cameraManger.getCameraCharacteristics(cameraId)
-          val hardwareLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+          hardwareLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
           if (hardwareLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
             // Camera only supports a single use-case at a time
             return true
@@ -496,8 +497,25 @@ class CameraView(context: Context, private val frameProcessorThread: ExecutorSer
       }
 
       preview = previewBuilder.build()
-      Log.i(TAG, "Attaching ${useCases.size} use-cases...")
-      camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, *useCases.toTypedArray())
+      Log.i(TAG, "Attaching ${useCases.size} use-cases... with HardwareLevel: " + hardwareLevel)
+
+      if(hardwareLevel == null){
+        cameraId?.let { cameraId ->
+          val cameraManger = reactContext.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+          cameraManger?.let {
+            val characteristics = cameraManger.getCameraCharacteristics(cameraId)
+            hardwareLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+          }
+        }
+      }
+
+      if(hardwareLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL && video == true && enableFrameProcessor){
+        Log.i(TAG, "Hardware level FULL detected with video and frame processor enabled, binding cemra without preview...")
+        camera = cameraProvider.bindToLifecycle(this, cameraSelector, *useCases.toTypedArray())
+      } else {
+        Log.i(TAG, "Binding camera with preview...")
+        camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, *useCases.toTypedArray())
+      }
       preview!!.setSurfaceProvider(previewView.surfaceProvider)
 
       minZoom = camera!!.cameraInfo.zoomState.value?.minZoomRatio ?: 1f
